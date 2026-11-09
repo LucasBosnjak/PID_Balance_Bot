@@ -1,0 +1,94 @@
+//Ohjelmakoodi
+
+#define dirPin 2
+#define stepPin 3
+const int xPin = A0;
+
+int xVal;
+const int numSamples = 1;
+int samples[numSamples];
+int sampleIndex = 0;
+
+const int center = 327;
+int stepsPerRevolution = 200;
+
+int prevXVal = center;
+
+void setup() {
+  pinMode(stepPin, OUTPUT);
+  pinMode(dirPin, OUTPUT);
+  Serial.begin(9600);
+}
+
+//Kerätään keskiarvo muutamasta viimeisestä x:n arvosta kohinan vaikutuksen vähentämiseksi
+int returnAverage(int newVal) {
+  samples[sampleIndex] = newVal;
+  sampleIndex = (sampleIndex + 1) % numSamples;
+
+  long total = 0;
+  for (int i = 0; i < numSamples; i++) {
+    total += samples[i];
+  }
+  return total / numSamples;
+}
+
+int delayVal;
+
+int getSmoothDelay(int xVal, int rawXVal) {
+  int diff = abs(xVal - center);
+
+  const int maxDiff = 80;
+  const int minDelay = 50;
+  const int maxDelay = 250;
+
+  if (diff > maxDiff) diff = maxDiff;
+  
+  //Muutetaan diff arvo asteikolta 0-80, asteikolle 250-50
+  int uusiDelayVal = map(diff, 0, maxDiff, maxDelay, minDelay);
+ 
+  delayVal = (0.8 * delayVal) + (0.2 * uusiDelayVal);
+ 
+  return delayVal;
+}
+
+void loop() {
+  int rawXVal = analogRead(xPin);
+  xVal = returnAverage(rawXVal);
+
+  int delayBetweenTurns = getSmoothDelay(xVal, rawXVal);
+	
+  //Jos kaadutaan eteenpäin, niin liikutaan eteenpäin
+  if (xVal > center + 5) {
+    digitalWrite(dirPin, HIGH);
+    stepsPerRevolution = 200;
+  }
+  //Jos kaadutaan taaksepäin, niin liikutaan taaksepäin
+  else if (xVal < center - 5) {
+    digitalWrite(dirPin, LOW);
+    stepsPerRevolution = 200;
+  } 
+  else {
+    stepsPerRevolution = 200;
+  }
+  // tarkistetaan kaatuuko, vai korjaako liikettä
+  bool goingTowardCenter = abs(xVal - center) - abs(prevXVal - center) > 2;
+
+  if (goingTowardCenter) {
+    delayBetweenTurns *= 0.8;  // nopeampi
+    Serial.println("Going towards center");
+  } else {
+    delayBetweenTurns *= 1.05;  // hitaampi
+  }
+ 
+  prevXVal = xVal;
+
+//diagnosointi dataa
+  Serial.println(xVal);
+
+  for (int i = 0; i < stepsPerRevolution; i++) {
+    digitalWrite(stepPin, HIGH);
+    delayMicroseconds(delayBetweenTurns);
+    digitalWrite(stepPin, LOW);
+    delayMicroseconds(delayBetweenTurns);
+  }
+}
